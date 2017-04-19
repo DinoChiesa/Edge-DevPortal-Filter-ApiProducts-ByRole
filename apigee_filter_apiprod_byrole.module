@@ -1,0 +1,243 @@
+<?php
+/**
+ * @file
+ * Apigee API Product list filter
+ * 
+ * Filters the API Product list based on the role of the user. 
+ *
+ * With this filter enabled, users may see different products, 
+ * depending on their role, and the environment to which the 
+ * products are deployed. 
+ */
+
+module_load_include('inc', 'apigee_filter_apiprod_byrole', 'functions');
+
+function apigee_filter_apiprod_byrole_init() {
+  if (arg(0) == 'admin') {
+    $path = drupal_get_path('module', 'apigee_filter_apiprod_byrole');
+    // we want special formatting of the settings table
+    drupal_add_css($path . '/apigee_filter_apiprod_byrole.css');
+  }
+}
+
+
+/**
+* Implements hook_apiproduct_list_alter() to modify the list of apiproducts
+* presented to the user. 
+* 
+* The corresponding drupal_alter() is called within
+* the devconnect module, within devconnect_developer_apps/devconnect_developer_apps.module. 
+* Specifically, function devconnect_developer_apps_edit_form() .
+* 
+*/
+function apigee_filter_apiprod_byrole_apiproduct_list_alter(&$apiproducts, &$account) {
+  //drupal_set_message('<pre>' . print_r($account,1) . '</pre>');
+  
+  // check master ON/OFF switch
+  $enabled = variable_get('apigee_filter_apiprod_byrole_enabled', 0);
+  if ($enabled > 0) {
+    // if enabled, filter the array
+    $apiproducts = array_filter($apiproducts, apigee_filter_apiprod_byrole_include_filter($account));
+  }
+}
+
+
+function apigee_filter_apiprod_byrole_normalize_rolepattern($env) {
+  $rolepattern = variable_get('apigee_filter_apiprod_byrole_rolepattern_' . $env,
+                              "admin");
+  // conditionally apply a case-insensitive flag
+  if(strpos($rolepattern,'@') === false) {
+    $rolepattern = '@' . $rolepattern . '@i';
+  }
+  else if(strpos($rolepattern,'/') === false) {
+    $rolepattern = '/' . $rolepattern . '/i';
+  }
+  return $rolepattern;
+}
+
+
+function apigee_filter_apiprod_byrole_preg_match_role($rolepattern, $want_logging) {
+  return function($role) use($rolepattern,$want_logging) {
+    $result = preg_match($rolepattern, $role);
+    // if ($want_logging) {
+    //   watchdog('apigee_filter_apiprod_byrole',
+    //            "check role !role, result !result",
+    //            array('!role' => print_r($role,1),
+    //                  '!result' => print_r($result,1)),
+    //            WATCHDOG_NOTICE);
+    // }
+    return $result;
+  };
+}
+
+
+function apigee_filter_apiprod_byrole_include_filter($account) {
+  $roles = $account->roles;
+  $available_environments = apigee_filter_apiprod_byrole_all_environments();
+  $want_logging = variable_get('apigee_filter_apiprod_byrole_logging', 0);
+
+  // optionally log the hostname
+  if (variable_get('apigee_filter_apiprod_byrole_logging', 0)) {
+    watchdog('apigee_filter_apiprod_byrole',
+             "roles !roles", array('!roles' => print_r($roles,1)),
+             WATCHDOG_NOTICE);
+  }
+  
+  // Return an invocable function, with closures on variables.
+  // We don't want to retrieve the user roles, whether to log, and the available
+  // environments for each product entity to be checked.
+  return function($apiProductEntity) use($roles, $available_environments, $want_logging) {
+    $result = FALSE;
+    foreach ($apiProductEntity->environments as $env_for_product) {
+      if (!$result) { 
+        if (in_array ($env_for_product, $available_environments)) {
+          $varname = 'apigee_filter_apiprod_byrole_enabled_' . $env_for_product;
+          $filtering_enabled_for_env = variable_get($varname, 0);
+          if ($filtering_enabled_for_env) {
+            $rolepattern = apigee_filter_apiprod_byrole_normalize_rolepattern($env_for_product);
+            $results_for_all_roles =
+              array_map(apigee_filter_apiprod_byrole_preg_match_role($rolepattern,$want_logging),
+                        $roles);
+            $match_count = count( array_filter( $results_for_all_roles ));
+            $result = $result || ( $match_count != 0 );
+          }
+          else {
+            // filtering is disabled, therefore always show this apiproduct 
+            $result = TRUE;
+          }
+        }
+        else {
+          // filtering not configured for this env, therefore always show this apiproduct 
+          $result = TRUE;
+        }
+      }
+    }
+
+    // optionally log this decision
+    if ($want_logging) {
+      watchdog('apigee_filter_apiprod_byrole',
+               "!result !prod",
+               array('!prod' => $apiProductEntity->name, '!result' => ($result)?'include':'exclude'),
+               WATCHDOG_NOTICE);
+    }
+    return $result;
+  };
+}
+
+
+
+/**
+ * Implements hook_menu().
+ */
+function apigee_filter_apiprod_byrole_menu() {
+  $items = array();
+  $items['admin/config/devconnect/apiproducts'] = array(
+    'title' => 'By-Role API Product Filtering',
+    'description' => 'Configuration for by-role filtering of API Products in "add new app"',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('apigee_filter_apiprod_byrole_admin_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM
+  );
+
+  return $items;
+}
+
+
+/**
+ * Page callback: Current posts settings
+ *
+ * @see apigee_filter_apiprod_byrole_menu()
+ */
+function apigee_filter_apiprod_byrole_admin_form($form, &$form_state) {
+  if (!class_exists('Apigee\ManagementAPI\Organization')) {
+    module_load_include('module', 'libraries');
+    module_load_include('module', 'devconnect');
+    devconnect_init();
+  }
+  
+  $prefix = 'apigee_filter_apiprod_byrole';
+  $form[$prefix] =
+    array('#type'=>'fieldset',
+          '#title'=>t('API Product filtering'),
+          '#description'=>t('Use these settings to filter the set of API Products shown in the "add an app" form. With this, you can insure that only API products deployed to a particular environment are presented to the developers with particular role.')
+          );
+
+  // this is the "master switch" for filtering
+  $form[$prefix][$prefix . '_enabled'] =
+    array('#type'=>'radios',
+          '#title'=>t('By-Role Filtering enabled'),
+          '#options'=>array(0=>t('Off'),1=>t('On')),
+          '#required' => TRUE,
+          '#default_value' => variable_get($prefix . '_enabled', 0)
+          );
+
+  $available_environments = apigee_filter_apiprod_byrole_all_environments();
+  $tprefix = '<div class=\'apiproducts_filtering\'><table><thead>' .
+    '<tr><th>Environment</th><th>Filtering Enabled</th><th>Role Pattern</th></tr>' .
+    '</thead><tbody>' .
+    '<tr><td>';
+  $tsuffix = '</td></tr>';
+  $num_environments = count($available_environments);
+
+  $ix = 0;
+  foreach ($available_environments as $env) {
+    $ix++;
+    $tprefix = $tprefix . $env . '</td><td style="text-align:center;">';
+
+    // var is like:
+    //  apigee_filter_apiprod_byrole_enabled_{prod,test,load,stage,etc}
+    $var = $prefix . '_enabled_' . $env;
+    $fld_attributes = array('title' => t("Whether filtering is turned on for this environment. If it is not, then API Products available this environment will be shown for all roles."));
+    $is_checked = variable_get($var, 0);
+    if ($is_checked) {
+      $fld_attributes['checked'] = 'checked';
+    }
+
+    $form[$prefix][$var] =
+      array(
+            '#type' => 'checkbox',
+            '#prefix' => $tprefix,
+            '#suffix' => '</td>',
+            '#attributes' => $fld_attributes
+            );
+
+    if ($ix == $num_environments) {
+      $tsuffix = '</td></tr></tbody></table></div>';
+    }
+
+    // var is like:
+    //  apigee_filter_apiprod_byrole_rolepattern_{prod,test,load,stage,etc}
+    $var = $prefix . '_rolepattern_' . $env;
+    $value = variable_get($var, "administrator");
+    $fld_attributes = array('title' =>
+                            t('This is a regular expression. You can use groups and options. Escape dots with backslash. If filtering is enabled for this environment, the role for the Drupal user is compared against this pattern, and only if the pattern matches, API Products available in the environment will be shown to the developer. If filtering is not enabled for the environment, then API Products available in the environment will always be shown to the developer regardless of the role.'));
+    
+    $form[$prefix][$var] =
+      array('#type' => 'textfield',
+            '#default_value' => $value,
+            '#size' => 44,
+            '#prefix' => '<td>',
+            '#suffix' => $tsuffix,
+            '#maxlength' => 82,
+            '#attributes' => $fld_attributes,
+            '#required' => TRUE
+            );
+
+    $tprefix = '<tr><td>';
+  }
+
+  // want logging of module activities?
+  $form[$prefix][$prefix . '_logging'] =
+    array('#type'=>'radios',
+          '#title'=> t('Logging of apiproduct filter activities? Not recommended for continuous use in production.'),
+          '#options'=>array(0=>t('Off'),1=>t('On')),
+          '#prefix' => '',
+          '#suffix' => '',
+          '#required' => TRUE,
+          '#default_value' => variable_get($prefix . '_logging', 0)
+          );
+
+  return system_settings_form($form);
+}
+

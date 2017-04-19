@@ -1,0 +1,8 @@
+name = Filter Apigee APIProduct By Role 
+description = Adds a Role-based API Product list filter
+package = DevConnectCustom
+version = "7.x-1.5"
+core = 7.x
+
+configure = admin/config/devconnect/apiproducts
+

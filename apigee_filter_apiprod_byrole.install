@@ -1,0 +1,41 @@
+<?php
+/**
+ * @file
+ * Apigee By-Role API Product list filter - installation
+ * 
+ * This is the install logic for the module that filters the API Product list by role.
+ *
+ */
+
+module_load_include('inc', 'apigee_filter_apiprod_byrole', 'functions');
+
+function apigee_filter_apiprod_byrole_uninstall() {
+  $varprefix = 'apigee_filter_apiprod_byrole_';
+  variable_del($varprefix . 'enabled');
+  variable_del($varprefix . 'logging');
+  
+  $available_environments = apigee_filter_apiprod_byrole_all_environments();
+  foreach($available_environments as $env) {
+    $var = $varprefix . 'enabled_' . $env;
+    variable_del($var);
+    $var = $varprefix . 'rolepattern_' . $env;
+    variable_del($var);
+  }  
+}
+
+function apigee_filter_apiprod_byrole_install() {
+  $varprefix = 'apigee_filter_apiprod_byrole_';
+  $available_environments = apigee_filter_apiprod_byrole_all_environments();
+
+  variable_set($varprefix . 'enabled', variable_get($varprefix . 'enabled', 0));
+  variable_set($varprefix . 'logging', variable_get($varprefix . 'logging', 0));
+  
+  foreach($available_environments as $env) {
+    $var = $varprefix . 'enabled_' . $env;
+    variable_set($var, variable_get($var, 0));
+    $var = $varprefix . 'rolepattern_' . $env;
+    variable_set($var, variable_get($var, "admin"));
+  }
+
+}
+
