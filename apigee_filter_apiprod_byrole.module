@@ -188,7 +188,7 @@ function apigee_filter_apiprod_byrole_admin_form($form, &$form_state) {
     // var is like:
     //  apigee_filter_apiprod_byrole_enabled_{prod,test,load,stage,etc}
     $var = $prefix . '_enabled_' . $env;
-    $fld_attributes = array('title' => t("Whether filtering is turned on for this environment. If it is not, then API Products available this environment will be shown for all roles."));
+    $fld_attributes = array('title' => t("Whether filtering is turned on for this environment. If this box is  unchecked, then API Products available this environment will be shown for all roles. If this box is checked, then API Products in this environment will be shown only if the role matches the pattern."));
     $is_checked = variable_get($var, 0);
     if ($is_checked) {
       $fld_attributes['checked'] = 'checked';
