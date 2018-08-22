@@ -22,6 +22,16 @@ Example:
 ![admin config panel](images/screenshot-20180821-172839.png "Admin Panel Snap 1")
 
 
+
+## Related modules
+
+* devconnect API Product access control - the default access control. An alternative to this module.
+* [API Product access control (Extended)](https://github.com/DinoChiesa/Edge-DevPortal-ApiProducts-Access-Extended) - an alternative module in which the Drupal admin specifies which products can be seen by which roles.
+* [API Product Access control by Role and custom attribute](https://github.com/DinoChiesa/Edge-DevPortal-ApiProducts-Access-CustomAttr) - allows filtering of API Products in the dropdown based on a custom attribute on each API Product, which is matched against the user's role. 
+* [Filter-ApiProducts by Environment](https://github.com/DinoChiesa/Edge-DevPortal-Filter-ApiProducts) - filters products by Pantheon environment (dev, stage, live). Possibly complementary to this module.
+* [ApiProducts-GroupBy-Env](https://github.com/DinoChiesa/Edge-DevPortal-ApiProducts-GroupBy-Env) - a module that groups Products by Environment in the dropdown list.  _Complementary_ to this module.
+
+
 ## Disclaimer
 
 This module is not an official Google product, nor is it part of an official Google product.
